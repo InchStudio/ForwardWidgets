@@ -220,6 +220,113 @@ async function loadDetail(link) {
    - 添加必要的注释
    - 模块化处理逻辑
 
+### 弹幕分片加载流程
+
+ForwardWidget 支持弹幕分片加载功能，适用于长视频（如动漫、剧集）的弹幕系统。弹幕按时间段组织，支持按需加载，提高性能和用户体验。
+
+#### 弹幕模块配置
+
+在 `WidgetMetadata` 中配置弹幕模块时，需要指定 `type: "danmu"`：
+
+```javascript
+modules: [
+  {
+    id: "searchDanmu",           // 搜索弹幕模块，id 必须固定
+    title: "搜索弹幕",
+    functionName: "searchDanmu",
+    type: "danmu",               // 指定为弹幕类型
+    params: []
+  },
+  {
+    id: "getComments",           // 获取弹幕模块，id 必须固定
+    title: "获取弹幕",
+    functionName: "getCommentsById",
+    type: "danmu",
+    params: []
+  },
+  {
+    id: "getDanmuWithSegmentTime", // 获取指定时刻弹幕模块
+    title: "获取指定时刻弹幕",
+    functionName: "getDanmuWithSegmentTime",
+    type: "danmu",
+    params: []
+  }
+]
+```
+
+#### 弹幕参数说明
+
+弹幕模块会自动携带以下参数：
+
+- **基础参数**：
+  - `tmdbId`: TMDB ID，用于本地存储标识
+  - `type`: 视频类型（tv | movie）
+  - `title`: 搜索关键词
+  - `commentId`: 弹幕ID，搜索到弹幕列表后实际加载时携带
+  - `animeId`: 动漫ID，搜索到动漫列表后实际加载时携带
+
+- **视频信息参数**：
+  - `seriesName`: 剧名
+  - `episodeName`: 集名
+  - `airDate`: 播出日期
+  - `runtime`: 时长
+  - `premiereDate`: 首播日期
+  - `season`: 季数（电影时为空）
+  - `episode`: 集数（电影时为空）
+  - `link`: 链接
+  - `videoUrl`: 视频链接
+
+- **时间参数**：
+  - `segmentTime`: 指定时刻，用于获取对应时间点的弹幕
+
+#### 弹幕
+
+#### 弹幕加载流程
+
+弹幕加载流程：
+
+1. **搜索弹幕** (`searchDanmu`) - 根据视频标题搜索弹幕资源
+2. **获取弹幕数据** (`getCommentsById`) - 从服务器获取弹幕分段信息或使用本地缓存
+3. **时间点匹配** (`getDanmuWithSegmentTime`) - 根据播放时间找到对应的弹幕。可选。
+
+具体实现代码详见 `widgets/segmentDanmuExample.js` 文件。
+
+#### 弹幕响应格式
+
+内置已支持主流弹幕数据格式，包括json、xml。你也可以自定义返回的弹幕格式，但要遵循如下规范：
+
+格式 1：
+```javascript
+[
+  {
+    p: "",// 时间，位置，颜色，等其他
+    m: "",
+    cid: "",
+  }
+]
+```
+
+格式 2：
+```javascript
+[
+  [
+    0,// 时间
+    "0",// 位置
+    "#fff",// 颜色
+    "",
+    "内容" // 弹幕内容
+  ]
+]
+```
+
+#### 最佳实践
+
+1. **本地缓存**：使用 `Widget.storage` 缓存弹幕分段信息，避免重复请求
+2. **分段加载**：根据播放进度按需加载对应时间段的弹幕
+3. **错误处理**：处理网络请求失败和弹幕解析异常
+4. **格式支持**：内置支持 XML 和 JSON 格式，支持 zlib 压缩
+5. **性能优化**：避免一次性加载所有弹幕，减少内存占用
+
 ### 调试
 
 App 内置了模块测试工具

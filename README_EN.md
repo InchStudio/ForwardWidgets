@@ -218,6 +218,111 @@ Handler functions need to return an array of objects that conform to the Forward
    - Add necessary comments
    - Modularize processing logic
 
+### Danmu Segment Loading Process
+
+ForwardWidget supports danmu segment loading functionality, suitable for long video (such as anime, TV series) danmu systems. Danmu are organized by time segments, supporting on-demand loading to improve performance and user experience.
+
+#### Danmu Module Configuration
+
+When configuring danmu modules in `WidgetMetadata`, you need to specify `type: "danmu"`:
+
+```javascript
+modules: [
+  {
+    id: "searchDanmu",           // Search danmu module, id must be fixed
+    title: "Search Danmu",
+    functionName: "searchDanmu",
+    type: "danmu",               // Specify as danmu type
+    params: []
+  },
+  {
+    id: "getComments",           // Get danmu module, id must be fixed
+    title: "Get Danmu",
+    functionName: "getCommentsById",
+    type: "danmu",
+    params: []
+  },
+  {
+    id: "getDanmuWithSegmentTime", // Get danmu for specified time module
+    title: "Get Danmu for Specified Time",
+    functionName: "getDanmuWithSegmentTime",
+    type: "danmu",
+    params: []
+  }
+]
+```
+
+#### Danmu Parameter Description
+
+Danmu modules automatically carry the following parameters:
+
+- **Basic Parameters**:
+  - `tmdbId`: TMDB ID, used for local storage identification
+  - `type`: Video type (tv | movie)
+  - `title`: Search keywords
+  - `commentId`: Danmu ID, carried when actually loading after searching danmu list
+  - `animeId`: Anime ID, carried when actually loading after searching anime list
+
+- **Video Information Parameters**:
+  - `seriesName`: Series name
+  - `episodeName`: Episode name
+  - `airDate`: Air date
+  - `runtime`: Duration
+  - `premiereDate`: Premiere date
+  - `season`: Season number (empty for movies)
+  - `episode`: Episode number (empty for movies)
+  - `link`: Link
+  - `videoUrl`: Video link
+
+- **Time Parameters**:
+  - `segmentTime`: Specified time, used to get danmu for corresponding time point
+
+#### Danmu Loading Process
+
+Danmu loading process:
+
+1. **Search Danmu** (`searchDanmu`) - Search danmu resources based on video title
+2. **Get Danmu Data** (`getCommentsById`) - Get danmu segment information from server or use local cache
+3. **Time Point Matching** (`getDanmuWithSegmentTime`) - Find corresponding danmu based on playback time. Optional.
+
+For specific implementation code, see the `widgets/segmentDanmuExample.js` file.
+
+#### Danmu Response Format
+
+Built-in support for mainstream danmu data formats including JSON and XML. You can also customize the returned danmu format, but must follow these specifications:
+
+Format 1:
+```javascript
+[
+  {
+    p: "",// Time, position, color, and other attributes
+    m: "",
+    cid: "",
+  }
+]
+```
+
+Format 2:
+```javascript
+[
+  [
+    0,// Time
+    "0",// Position
+    "#fff",// Color
+    "",
+    "Content" // Danmu content
+  ]
+]
+```
+
+#### Best Practices
+
+1. **Local Caching**: Use `Widget.storage` to cache danmu segment information, avoiding duplicate requests
+2. **Segment Loading**: Load danmu for corresponding time segments on-demand based on playback progress
+3. **Error Handling**: Handle network request failures and danmu parsing exceptions
+4. **Format Support**: Built-in support for XML and JSON formats, supports zlib compression
+5. **Performance Optimization**: Avoid loading all danmu at once, reduce memory usage
+
 ### Debugging
 
 The App has built-in module testing tools
