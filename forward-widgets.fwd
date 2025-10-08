@@ -13,6 +13,15 @@
       "url": "https://assets.vvebo.vip/scripts/tmdb.js"
     },
     {
+      "id": "forward.trendingmedia",
+      "title": "影视数据",
+      "description": "获取时下热门电影、电视剧和综艺数据",
+      "requiredVersion": "0.0.1",
+      "version": "1.0.0",
+      "author": "Forward",
+      "url": "https://assets.vvebo.vip/scripts/trendingmedia.js"
+    },
+    {
       "id": "forward.bangumi",
       "title": "动漫数据",
       "description": "获取时下热门动漫数据和播出日历",

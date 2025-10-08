@@ -126,17 +126,17 @@ async function fetchBangumiData() {
 async function fetchTrendingData() {
   try {
     // 首先尝试获取最新的热度数据
-    const latestUrl = "https://forward-image.oss-cn-hangzhou.aliyuncs.com/scripts/datas/latest_trending.json";
+    const latestUrl = "https://assets.vvebo.vip/scripts/datas/latest_bangumi_trending.json";
     
     console.log("正在获取最新 Bangumi 热度数据:", latestUrl);
     const response = await Widget.http.get(latestUrl);
     
     if (response && response.data) {
-      console.log("Bangumi 热度数据获取成功 (latest_trending.json)");
+      console.log("Bangumi 热度数据获取成功 (latest_bangumi_trending.json)");
       return response.data;
     }
   } catch (error) {
-    console.log("获取 latest_trending.json 失败，尝试按日期获取:", error.message);
+    console.log("获取 latest_bangumi_trending.json 失败，尝试按日期获取:", error.message);
   }
   
   // 如果所有日期都获取失败，返回空数组
