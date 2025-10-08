@@ -1,7 +1,7 @@
 WidgetMetadata = {
   id: "forward.tmdb",
   title: "TMDB",
-  version: "1.0.2",
+  version: "1.0.3",
   requiredVersion: "0.0.1",
   description: "获取 TMDB 的榜单数据",
   author: "Forward",
@@ -396,7 +396,23 @@ async function fetchData(api, params, forceMediaType) {
     }
 
     console.log(response);
-    const data = response.results;
+    let data = response.results;
+    
+    // 如果没有 forceMediaType，先过滤只保留 movie 和 tv 的数据
+    if (!forceMediaType) {
+      data = data.filter((item) => {
+        let mediaType = item.media_type;
+        if (mediaType == null) {
+          if (item.title) {
+            mediaType = "movie";
+          } else {
+            mediaType = "tv";
+          }
+        }
+        return mediaType === "movie" || mediaType === "tv";
+      });
+    }
+    
     const result = data.map((item) => {
       let mediaType = item.media_type;
       if (forceMediaType) {
@@ -407,7 +423,7 @@ async function fetchData(api, params, forceMediaType) {
         } else {
           mediaType = "tv";
         }
-      }
+      } 
       return {
         id: item.id,
         type: "tmdb",
@@ -421,6 +437,7 @@ async function fetchData(api, params, forceMediaType) {
         genreTitle: genreTitleWith(item.genre_ids),
       };
     });
+    
     return result;
   } catch (error) {
     console.error("调用 TMDB API 失败:", error);
