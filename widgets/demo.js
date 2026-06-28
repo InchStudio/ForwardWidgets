@@ -30,14 +30,14 @@ WidgetMetadata = {
   id: "forward.meta.demo",
   title: "DEMO",
   icon: "https://assets.vvebo.vip/scripts/icon.png",
-  version: "1.0.0",
+  version: "1.0.2",
   requiredVersion: "0.0.1",
   description: "演示模块",
   author: "Forward",
   site: "https://github.com/InchStudio/ForwardWidgets",
   modules: [
     {
-      //id需固定为getResource
+      // id 需固定为 loadResource
       id: "loadResource",
       title: "加载资源",
       functionName: "loadResource",
@@ -45,7 +45,7 @@ WidgetMetadata = {
       params: [],
     },
     {
-      //id需固定为getDetail
+      // id 需固定为 loadSubtitle
       id: "loadSubtitle",
       title: "加载字幕",
       functionName: "loadSubtitle",
@@ -72,6 +72,45 @@ WidgetMetadata = {
     },
   ],
 };
+
+var SKIP_REDIRECT_PROBE_HEADER = "X-Forward-Skip-Redirect-Probe";
+var DEMO_SHARED_CACHE_NAMESPACE = "forward.meta.demo";
+
+function buildLiveFlvResource(url, name, description) {
+  return {
+    name: name || "HTTP-FLV 直播",
+    description: description || "一次性/长连接直播流示例",
+    url: url,
+    customHeaders: {
+      "User-Agent": "Mozilla/5.0 (ForwardWidget Demo)",
+      Referer: "https://example.com/",
+      // 仅用于 HTTP-FLV 直播、一次性签名 URL 等不能被起播前 GET 探测消耗的资源。
+      // App 会识别并过滤这个内部 header，不会把它发送给真实 CDN。
+      [SKIP_REDIRECT_PROBE_HEADER]: "1",
+    },
+    playerType: "app",
+  };
+}
+
+function buildSharedCacheKey(parts) {
+  return parts.map(function (part) {
+    return encodeURIComponent(String(part || ""));
+  }).join(":");
+}
+
+function readDemoSharedCache(key) {
+  if (!Widget.sharedCache || typeof Widget.sharedCache.get !== "function") {
+    return null;
+  }
+  return Widget.sharedCache.get(DEMO_SHARED_CACHE_NAMESPACE, key);
+}
+
+function writeDemoSharedCache(key, value) {
+  if (!Widget.sharedCache || typeof Widget.sharedCache.set !== "function") {
+    return;
+  }
+  Widget.sharedCache.set(DEMO_SHARED_CACHE_NAMESPACE, key, value);
+}
 
 var DEMO_VIDEO_ITEMS = [
   {
@@ -143,6 +182,10 @@ var DEMO_VIDEO_ITEMS = [
 async function loadResource(params) {
   const { tmdbId, imdbId, id, type, seriesName, episodeName, season, episode, link } = params;
 
+  // 如果这里动态签名后拿到 HTTP-FLV 直播/一次性 URL，可返回：
+  // buildLiveFlvResource("https://example.com/live/stream.flv?token=...", "直播线路")
+  // 普通 mp4、m3u8、稳定直链不需要设置 X-Forward-Skip-Redirect-Probe。
+
   return [
     {
         name: "测试资源",
@@ -177,12 +220,74 @@ async function loadSubtitle(params) {
   ]
 }
 
+function parseArchiveFileList(value) {
+  try {
+    var files = JSON.parse(value || "[]");
+    return Array.isArray(files) ? files : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function archiveSubtitleScore(file, params) {
+  var name = String(file.name || file.path || "").toLowerCase();
+  var score = 0;
+  if (params.season && params.episode) {
+    var season = String(params.season);
+    var episode = String(params.episode);
+    var seasonPadded = season.padStart(2, "0");
+    var episodePadded = episode.padStart(2, "0");
+    var patterns = [
+      "s" + seasonPadded + "e" + episodePadded,
+      "s" + season + "e" + episode,
+      season + "x" + episodePadded,
+      season + "x" + episode,
+    ];
+    for (var i = 0; i < patterns.length; i++) {
+      if (name.indexOf(patterns[i]) >= 0) {
+        score += 100;
+        break;
+      }
+    }
+  }
+  if (name.indexOf("zh") >= 0 || name.indexOf("简体") >= 0 || name.indexOf("中文") >= 0) {
+    score += 10;
+  }
+  return score;
+}
+
+async function resolveSubtitleArchive(params) {
+  // 客户端传入的是解压目录内的相对 path，返回时也必须返回同一个相对 path。
+  // 不要缓存或拼接本机绝对路径；不同设备、不同下载批次的绝对路径都会变化。
+  var subtitleFiles = parseArchiveFileList(params.subtitleFiles || params.files);
+  if (subtitleFiles.length === 0) {
+    return null;
+  }
+
+  var best = subtitleFiles[0];
+  var bestScore = archiveSubtitleScore(best, params);
+  for (var i = 1; i < subtitleFiles.length; i++) {
+    var file = subtitleFiles[i];
+    var score = archiveSubtitleScore(file, params);
+    if (score > bestScore) {
+      best = file;
+      bestScore = score;
+    }
+  }
+  return best.path;
+}
+
 async function loadList(params) {
   var page = Number(params.page || 1);
   var count = Number(params.count || 12);
   var start = (page - 1) * count;
   var genreId = String(params.genreId || "");
   var peopleId = String(params.peopleId || "");
+  var cacheKey = buildSharedCacheKey(["loadList", "v1", page, count, genreId, peopleId]);
+  var cachedItems = readDemoSharedCache(cacheKey);
+  if (Array.isArray(cachedItems)) {
+    return cachedItems;
+  }
 
   var result = [];
   for (var i = 0; i < DEMO_VIDEO_ITEMS.length; i++) {
@@ -196,7 +301,9 @@ async function loadList(params) {
     result.push(item);
   }
 
-  return result.slice(start, start + count);
+  var items = result.slice(start, start + count);
+  writeDemoSharedCache(cacheKey, items);
+  return items;
 }
 
 function hasGenre(item, genreId) {

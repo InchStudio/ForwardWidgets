@@ -180,6 +180,34 @@ const response = await Widget.http.post(url, body, options);
 let data = response.data;
 ```
 
+### 存储与共享缓存 API
+
+`Widget.storage` 是当前 Widget 脚本自己的键值存储，同一个脚本里的多个模块可以共享，但不会和其他脚本共享。适合保存当前模块内部的轻量状态、分页游标、上次选择等数据。
+
+```javascript
+Widget.storage.set("lastCategory", "movie");
+const lastCategory = Widget.storage.get("lastCategory");
+Widget.storage.remove("lastCategory");
+```
+
+`Widget.sharedCache` 是显式共享缓存，适合多个官方模块或多个脚本复用同一份稳定数据，例如公共分类表、站点配置、临时解析结果。它必须带 `namespace`，避免不同模块互相覆盖。
+
+```javascript
+const SHARED_CACHE_NAMESPACE = "forward.demo.catalog";
+const cached = Widget.sharedCache.get(SHARED_CACHE_NAMESPACE, "featured");
+if (cached) {
+  return cached;
+}
+
+const items = await loadFeaturedItems();
+Widget.sharedCache.set(SHARED_CACHE_NAMESPACE, "featured", items);
+return items;
+```
+
+共享缓存不会自动过期，也不提供脚本侧全量清理。需要失效时可以写入带版本号的 key，或用 `Widget.sharedCache.remove(namespace, key)` 删除指定项。App 设置里的「模块缓存」清理会一并清除共享缓存。
+
+如果模块需要兼容旧版客户端，调用前先判断 `Widget.sharedCache` 是否存在；`widgets/demo.js` 里提供了兼容写法。
+
 ### 列表模块 API
 
 普通视频列表模块需要在 `WidgetMetadata.modules` 中声明一个模块，并由 `functionName` 指向实际函数。函数返回 `VideoItem[]`。
@@ -218,6 +246,84 @@ async function loadDetail(link) {
 ```
 
 `loadDetail` 是 Widget 顶层函数，不属于某个 `modules` 配置。详情页会用列表条目的 `link` 调用它，用于补充剧照、预告片、分类、演员、相关推荐、播放地址等详情数据。
+
+### 播放资源模块 API
+
+当播放地址需要在**真正起播时**动态生成时（例如直播签名、短期 token、多 CDN 线路），不要把一次性 URL 固定写在 `loadDetail` 的 `videoUrl` 中。应在 `WidgetMetadata.modules` 中声明 `id: "loadResource"` 且 `type: "stream"` 的模块，客户端会在起播、切换线路或刷新资源时调用它。
+
+```javascript
+modules: [
+  {
+    id: "loadResource",
+    title: "加载资源",
+    functionName: "loadResource",
+    type: "stream",
+    cacheDuration: 0,
+    params: []
+  }
+]
+
+async function loadResource(params) {
+  // params 会携带 tmdbId / imdbId / id / type / season / episode / link / videoUrl 等上下文
+  const liveUrl = await getFreshPlaybackUrl(params.link);
+  return [
+    {
+      name: "直播线路",
+      description: "HTTP-FLV",
+      url: liveUrl,
+      customHeaders: {
+        "User-Agent": "Mozilla/5.0 ...",
+        Referer: "https://example.com/",
+        "X-Forward-Skip-Redirect-Probe": "1"
+      },
+      playerType: "app"
+    }
+  ];
+}
+```
+
+`loadResource` 返回 `VideoResource[]`：
+
+- `name`: 线路名称，会显示在资源列表中。
+- `description`: 可选，线路说明，可写分辨率、编码、音频、来源等信息。
+- `url`: 必填，最终播放地址。
+- `customHeaders` / `headers`: 可选，播放请求头。
+- `playerType`: 可选，`system` 或 `app`。
+
+#### 跳过起播前重定向探测
+
+`X-Forward-Skip-Redirect-Probe: "1"` 是给播放器的内部控制 header。它适用于 HTTP-FLV 直播、一次性签名 URL、长连接直播流等**不能被起播前 GET 探测消耗**的资源。客户端识别后会跳过重定向探测，并在真正播放请求前过滤掉这个 header，不会把它发送给 CDN。
+
+不要给所有资源都加这个 header：普通 mp4、稳定直链、m3u8/HLS 通常应保持默认重定向探测；m3u8 的播放列表刷新由播放器处理，不需要用这个 header 做轮询或持续刷新。
+
+### 字幕压缩包选择 API
+
+`loadSubtitle` 可以返回 `.zip` 字幕压缩包 URL。客户端下载后会解压；如果脚本定义了顶层函数 `resolveSubtitleArchive(params)`，客户端会在使用字幕前把解压后的文件列表传给它，由脚本返回真正要使用的文件相对路径。这个函数不需要写进 `WidgetMetadata.modules`。
+
+```javascript
+async function resolveSubtitleArchive(params) {
+  const subtitleFiles = JSON.parse(params.subtitleFiles || "[]");
+  const best = subtitleFiles.find(file => file.name.includes("简体")) || subtitleFiles[0];
+  return best ? best.path : null;
+}
+```
+
+新增参数：
+
+- `archiveName`: 压缩包文件名。
+- `archiveUrl`: 压缩包下载 URL。
+- `subtitleId` / `subtitleName` / `subtitleLanguage`: 当前字幕候选信息。
+- `files`: JSON 字符串，所有解压后的普通文件。
+- `subtitleFiles`: JSON 字符串，仅包含客户端支持的字幕文件。
+
+`files` 和 `subtitleFiles` 的每个元素都包含：
+
+- `path`: 解压目录内的真实相对路径，例如 `Season 1/E02.zh.ass`。返回时应使用这个值；不要构造绝对路径。
+- `name`: 文件名。
+- `extension`: 小写扩展名。
+- `size`: 文件大小，可能为空。
+
+返回值可以是相对路径字符串、字符串数组、`{ path: "..." }`，或 `{ files: ["..."] }`。如果函数不存在、返回空、或返回的路径不在解压目录内，客户端会回退到默认自动选择逻辑。
 
 ### 返回数据格式
 

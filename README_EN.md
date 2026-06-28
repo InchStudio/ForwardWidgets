@@ -164,6 +164,34 @@ const response = await Widget.http.post(url, body, options);
 let data = response.data
 ```
 
+### Storage And Shared Cache API
+
+`Widget.storage` is private key-value storage for the current Widget script. Modules in the same script can share it, but other scripts cannot read it. Use it for lightweight script-local state, cursors, or the last selected option.
+
+```javascript
+Widget.storage.set("lastCategory", "movie");
+const lastCategory = Widget.storage.get("lastCategory");
+Widget.storage.remove("lastCategory");
+```
+
+`Widget.sharedCache` is an explicit shared cache for data that multiple official modules or scripts can safely reuse, such as common category lists, site configuration, or temporary parse results. Always pass a `namespace` so unrelated modules do not overwrite each other.
+
+```javascript
+const SHARED_CACHE_NAMESPACE = "forward.demo.catalog";
+const cached = Widget.sharedCache.get(SHARED_CACHE_NAMESPACE, "featured");
+if (cached) {
+  return cached;
+}
+
+const items = await loadFeaturedItems();
+Widget.sharedCache.set(SHARED_CACHE_NAMESPACE, "featured", items);
+return items;
+```
+
+Shared cache entries do not expire automatically, and scripts do not get a global clear operation. When data should be invalidated, write a versioned key or call `Widget.sharedCache.remove(namespace, key)` for the specific item. The App's Settings > Module Cache cleanup removes shared cache data together with normal widget cache data.
+
+If a module needs to stay compatible with older clients, check whether `Widget.sharedCache` exists before calling it; `widgets/demo.js` includes that guarded pattern.
+
 ### List Module API
 
 A normal video list module should be declared in `WidgetMetadata.modules`, with `functionName` pointing to the handler. The handler returns `VideoItem[]`.
@@ -202,6 +230,84 @@ async function loadDetail(link) {
 ```
 
 `loadDetail` is a top-level Widget function, not a module in `modules`. The detail page calls it with the list item's `link` to supplement detail data such as stills, trailers, categories, actors, related items, and playback URL.
+
+### Playback Resource Module API
+
+When a playback URL must be generated **at playback time** (for example live stream signatures, short-lived tokens, or multiple CDN lines), do not store the one-time URL in `videoUrl` from `loadDetail`. Declare a module with `id: "loadResource"` and `type: "stream"` in `WidgetMetadata.modules`; the client calls it when playback starts, when users switch lines, or when resources are refreshed.
+
+```javascript
+modules: [
+  {
+    id: "loadResource",
+    title: "Load Resource",
+    functionName: "loadResource",
+    type: "stream",
+    cacheDuration: 0,
+    params: []
+  }
+]
+
+async function loadResource(params) {
+  // params may include tmdbId / imdbId / id / type / season / episode / link / videoUrl.
+  const liveUrl = await getFreshPlaybackUrl(params.link);
+  return [
+    {
+      name: "Live Line",
+      description: "HTTP-FLV",
+      url: liveUrl,
+      customHeaders: {
+        "User-Agent": "Mozilla/5.0 ...",
+        Referer: "https://example.com/",
+        "X-Forward-Skip-Redirect-Probe": "1"
+      },
+      playerType: "app"
+    }
+  ];
+}
+```
+
+`loadResource` returns `VideoResource[]`:
+
+- `name`: Resource line name shown in the resource list.
+- `description`: Optional line description, such as resolution, codec, audio, or source.
+- `url`: Required final playback URL.
+- `customHeaders` / `headers`: Optional playback request headers.
+- `playerType`: Optional, `system` or `app`.
+
+#### Skipping The Pre-Playback Redirect Probe
+
+`X-Forward-Skip-Redirect-Probe: "1"` is an internal control header for the player. Use it for HTTP-FLV live streams, one-time signed URLs, long-lived live connections, or similar resources that may be consumed by a pre-playback GET probe. The client skips redirect probing when it sees this header and filters the header before the real playback request, so it is not sent to the CDN.
+
+Do not add this header to every resource. Normal mp4 files, stable direct links, and m3u8/HLS resources should usually keep the default redirect probing behavior. HLS playlist refresh is handled by the player; this header is not a polling or continuous-refresh mechanism.
+
+### Subtitle Archive Selection API
+
+`loadSubtitle` may return a `.zip` subtitle archive URL. The client downloads and extracts it. If the script defines a top-level `resolveSubtitleArchive(params)` function, the client calls it before using the subtitle so the script can return the real file path to use. This function does not need to be declared in `WidgetMetadata.modules`.
+
+```javascript
+async function resolveSubtitleArchive(params) {
+  const subtitleFiles = JSON.parse(params.subtitleFiles || "[]");
+  const best = subtitleFiles.find(file => file.name.includes("English")) || subtitleFiles[0];
+  return best ? best.path : null;
+}
+```
+
+Additional params:
+
+- `archiveName`: Archive file name.
+- `archiveUrl`: Archive download URL.
+- `subtitleId` / `subtitleName` / `subtitleLanguage`: Current subtitle candidate information.
+- `files`: JSON string for all extracted regular files.
+- `subtitleFiles`: JSON string filtered to subtitle files supported by the client.
+
+Each item in `files` and `subtitleFiles` includes:
+
+- `path`: The real relative path inside the extracted directory, such as `Season 1/E02.en.ass`. Return this value as-is; do not construct absolute paths.
+- `name`: File name.
+- `extension`: Lowercase file extension.
+- `size`: File size, possibly empty.
+
+The return value can be a relative path string, a string array, `{ path: "..." }`, or `{ files: ["..."] }`. If the function is missing, returns nothing, or returns a path outside the extracted directory, the client falls back to its default automatic selection.
 
 ### Return Data Format
 
