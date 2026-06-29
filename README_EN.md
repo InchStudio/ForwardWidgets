@@ -231,6 +231,39 @@ async function loadDetail(link) {
 
 `loadDetail` is a top-level Widget function, not a module in `modules`. The detail page calls it with the list item's `link` to supplement detail data such as stills, trailers, categories, actors, related items, and playback URL.
 
+### Forward Type and FWID Auto Matching
+
+If a list item represents a stable Forward drive resource identity, return `type: "forward"` and keep `id` and `link` on the same resource ID. After the client detects the Forward type, it automatically normalizes the ID to `fw-<id>` and uses it in detail-page resource mode to match the corresponding drive file or folder on demand. No extra switch is required.
+
+```javascript
+async function loadList(params) {
+  return [
+    {
+      id: "550",
+      type: "forward",
+      title: "Drive resource matching test",
+      mediaType: "movie",
+      link: "550",
+    },
+  ];
+}
+
+async function loadDetail(link) {
+  if (link === "550") {
+    return {
+      id: "550",
+      type: "forward",
+      title: "Drive resource matching test",
+      mediaType: "movie",
+      link: "550",
+    };
+  }
+  return null;
+}
+```
+
+`loadList` and `loadDetail` should keep the same `id` / `link` / `type` values, otherwise the detail page cannot reliably bind to the same drive resource. Normal media items should continue using `tmdb`, `douban`, `imdb`, or `url`; use `type: "forward"` only when this ID itself is a matchable Forward drive resource identity.
+
 ### Playback Resource Module API
 
 When a playback URL must be generated **at playback time** (for example live stream signatures, short-lived tokens, or multiple CDN lines), do not store the one-time URL in `videoUrl` from `loadDetail`. Declare a module with `id: "loadResource"` and `type: "stream"` in `WidgetMetadata.modules`; the client calls it when playback starts, when users switch lines, or when resources are refreshed.

@@ -247,6 +247,39 @@ async function loadDetail(link) {
 
 `loadDetail` 是 Widget 顶层函数，不属于某个 `modules` 配置。详情页会用列表条目的 `link` 调用它，用于补充剧照、预告片、分类、演员、相关推荐、播放地址等详情数据。
 
+### Forward 类型与 FWID 自动匹配
+
+如果列表项代表一个稳定的 Forward 网盘资源身份，可以返回 `type: "forward"`，并让 `id` 和 `link` 使用同一个资源 ID。客户端识别到 Forward 类型后会自动把该 ID 归一为 `fw-<id>`，在详情页的资源模式里按需匹配对应网盘文件或文件夹，不需要额外开关。
+
+```javascript
+async function loadList(params) {
+  return [
+    {
+      id: "550",
+      type: "forward",
+      title: "网盘资源匹配测试",
+      mediaType: "movie",
+      link: "550",
+    },
+  ];
+}
+
+async function loadDetail(link) {
+  if (link === "550") {
+    return {
+      id: "550",
+      type: "forward",
+      title: "网盘资源匹配测试",
+      mediaType: "movie",
+      link: "550",
+    };
+  }
+  return null;
+}
+```
+
+`loadList` 和 `loadDetail` 应保持同一组 `id` / `link` / `type`，否则详情页无法稳定绑定同一个网盘资源。普通影视条目仍应继续使用 `tmdb`、`douban`、`imdb` 或 `url`；只有这个 ID 本身就是可匹配的 Forward 网盘资源身份时，才使用 `type: "forward"`。
+
 ### 播放资源模块 API
 
 当播放地址需要在**真正起播时**动态生成时（例如直播签名、短期 token、多 CDN 线路），不要把一次性 URL 固定写在 `loadDetail` 的 `videoUrl` 中。应在 `WidgetMetadata.modules` 中声明 `id: "loadResource"` 且 `type: "stream"` 的模块，客户端会在起播、切换线路或刷新资源时调用它。

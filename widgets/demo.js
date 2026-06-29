@@ -145,6 +145,7 @@ var DEMO_VIDEO_ITEMS = [
     id: "550",
     type: "forward",
     title: "网盘资源匹配测试",
+    description: "Forward 类型会把 id/link 自动归一为 fw-550，并在详情页资源模式中按需匹配网盘文件。",
     mediaType: "movie",
     link: "550",
   },
@@ -343,7 +344,7 @@ async function loadDetail(link) {
       id: "550",
       type: "forward",
       title: "网盘资源匹配测试",
-      description: "用于测试通过资源 ID 匹配网盘文件。",
+      description: "用于测试 Forward 类型资源 ID 自动匹配网盘文件；客户端会将 550 归一为 fw-550。",
       mediaType: "movie",
       link: "550",
     };
