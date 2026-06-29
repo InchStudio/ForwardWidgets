@@ -30,7 +30,7 @@ WidgetMetadata = {
   id: "forward.meta.demo",
   title: "DEMO",
   icon: "https://assets.vvebo.vip/scripts/icon.png",
-  version: "1.0.2",
+  version: "1.0.4",
   requiredVersion: "0.0.1",
   description: "演示模块",
   author: "Forward",
@@ -140,6 +140,13 @@ var DEMO_VIDEO_ITEMS = [
       },
     ],
     link: "demo-detail-1",
+  },
+  {
+    id: "550",
+    type: "forward",
+    title: "网盘资源匹配测试",
+    mediaType: "movie",
+    link: "550",
   },
   {
     id: 550,
@@ -283,7 +290,7 @@ async function loadList(params) {
   var start = (page - 1) * count;
   var genreId = String(params.genreId || "");
   var peopleId = String(params.peopleId || "");
-  var cacheKey = buildSharedCacheKey(["loadList", "v1", page, count, genreId, peopleId]);
+  var cacheKey = buildSharedCacheKey(["loadList", "v2", page, count, genreId, peopleId]);
   var cachedItems = readDemoSharedCache(cacheKey);
   if (Array.isArray(cachedItems)) {
     return cachedItems;
@@ -331,6 +338,17 @@ function hasPeople(item, peopleId) {
 }
 
 async function loadDetail(link) {
+  if (link === "550") {
+    return {
+      id: "550",
+      type: "forward",
+      title: "网盘资源匹配测试",
+      description: "用于测试通过资源 ID 匹配网盘文件。",
+      mediaType: "movie",
+      link: "550",
+    };
+  }
+
   if (link !== "demo-detail-1") {
     return null;
   }
